@@ -27,7 +27,6 @@ from klayout_gui_automation.event_handler import EventHandler
 from klayout_gui_automation.qwidget_helpers import *
 from klayout_gui_automation.widget_path import WidgetPath
 
-
 class EventRecorder(pya.QObject):
     def __init__(self, event_handler: EventHandler):
         self._event_handler = event_handler
@@ -68,15 +67,15 @@ class EventRecorder(pya.QObject):
         if Debugging.DEBUG:
              debug(f"EventRecorder.action")
         
+        ## TODO! ##FIXME! action interception does not yet work!
+        widget_path = WidgetPath.for_widget(widget)
         self.event_handler.handle_event(
             Event(
-                kind=Event.Kind.PROBE_EVENT,
+                kind=Event.Kind.ACTION_EVENT,
                 target=widget_path,
-                event=ProbeEvent(data=data)
+                action_name=action.objectName
             )
         )
-        ## TODO! ##FIXME! action interception does not yet work!
-        self._event_handler.handle_action_event(action.parent(), action.objectName())
         
     @staticmethod
     def is_modifier_key(event: pya.QKeyEvent) -> bool:
@@ -91,6 +90,7 @@ class EventRecorder(pya.QObject):
             if Debugging.DEBUG:
                  debug(f"EventRecorder.probe")
         
+            widget_path = WidgetPath.for_widget(widget)
             self.event_handler.handle_event(
                 Event(
                     kind=Event.Kind.PROBE_EVENT,
@@ -187,13 +187,12 @@ class EventRecorder(pya.QObject):
             if isinstance(event, pya.QMouseEvent) and not event.spontaneous():
                 return False
             
-            widget_path = WidgetPath.for_widget(widget)
-            
             match event.type():
                 case pya.QEvent.KeyPress | pya.QEvent.KeyRelease:
                     if self.is_modifier_key(event):
                         return False
 
+                    widget_path = WidgetPath.for_widget(widget)
                     self._event_handler.handle_event(
                         Event(kind=Event.Kind.KEY_EVENT, target=widget_path, event=KeyEvent.from_qt(event))
                     )
@@ -239,6 +238,7 @@ class EventRecorder(pya.QObject):
                         
                         return True  # eat probe events
                     elif self.is_valid_widget(widget):
+                        widget_path = WidgetPath.for_widget(widget)
                         self._event_handler.handle_event(
                             Event(kind=Event.Kind.MOUSE_EVENT, target=widget_path, event=MouseEvent.from_qt(event))
                         )
@@ -247,14 +247,15 @@ class EventRecorder(pya.QObject):
                             debug(f"EventRecorder.eventFilter: mouse event, but not a valid widget: {widget}")
                 case pya.QEvent.MouseMove:
                     if self.is_valid_widget(widget):
+                        widget_path = WidgetPath.for_widget(widget)
                         self._event_handler.handle_event(
                             Event(kind=Event.Kind.MOUSE_EVENT, target=widget_path, event=MouseEvent.from_qt(event))
                         )
                 case pya.QEvent.Resize:
                     if widget.parentWidget() is None and self.is_valid_widget(widget):
+                        widget_path = WidgetPath.for_widget(widget)
                         self._event_handler.handle_event(
-                            Event(kind=Event.Kind.RESIZE_EVENT, target=widget_path, event=ResizeEvent.from_qt(event)
-                            )
+                            Event(kind=Event.Kind.RESIZE_EVENT, target=widget_path, event=ResizeEvent.from_qt(event))
                         )
         except Exception as e:
             app = pya.Application.instance()

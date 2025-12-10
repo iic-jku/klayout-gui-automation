@@ -23,6 +23,7 @@ from typing import *
 import pya
 
 from klayout_plugin_utils.debugging import debug, Debugging
+from klayout_gui_automation.qwidget_helpers import *
 from klayout_gui_automation.safe_attr_get import safe_attr_get
 
 @dataclass
@@ -49,6 +50,11 @@ class WidgetPath:
 
     @staticmethod
     def prepend_entries_for_widget(entries: List[WidgetPathEntry], widget: pya.QWidget, visited: Set[int]):
+        def is_valid_widget(widget: pya.QWidget) -> bool:
+            return isinstance(widget, (pya.QDialog, pya.QDialog_Native, 
+                                       pya.QMainWindow, pya.QMainWindow_Native, 
+                                       pya.QWidget, pya.QWidget_Native))
+        
         widget_id = id(widget)
         if Debugging.DEBUG:
             debug(f"WidgetPath.for_widget.prepend_entries_for_widget called for {widget} (id {widget_id})")
@@ -116,11 +122,6 @@ class WidgetPath:
 
     @classmethod
     def for_widget(cls, widget: pya.QWidget) -> WidgetPath:
-        def is_valid_widget(widget: pya.QWidget) -> bool:
-            return isinstance(widget, (pya.QDialog, pya.QDialog_Native, 
-                                       pya.QMainWindow, pya.QMainWindow_Native, 
-                                       pya.QWidget, pya.QWidget_Native))
-            
         if Debugging.DEBUG:
             debug(f"WidgetPath.for_widget: enter for widget {widget!r}")
                         
