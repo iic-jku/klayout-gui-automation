@@ -22,6 +22,8 @@ from typing import *
 
 import pya
 
+from klayout_plugin_utils.debugging import debug, Debugging
+
 
 @dataclass
 class WidgetPathEntry:
@@ -32,12 +34,12 @@ class WidgetPathEntry:
     property_filter: Optional[Dict[str, str]] = None
 
     def xpath(self) -> str:
-        s = f"{wcls}"
-        if property_filter:  # we prefer the property filter (more robust against GUI changes)
-            p = [f"@{k}='{v}'" for k, v in property_filter.items()]
+        s = f"{self.class_name}"
+        if self.property_filter:  # we prefer the property filter (more robust against GUI changes)
+            p = [f"@{k}='{v}'" for k, v in self.property_filter.items()]
             s += f"[{' and '.join(p)}]"
-        elif i > 1:
-            s += f"[{i}]"
+        elif self.child_index > 1:
+            s += f"[{self.child_index}]"
         return s
 
 @dataclass
@@ -53,7 +55,19 @@ class WidgetPath:
                 return True
             return False
             
-        def add_entries_for_widget(entries: List[WidgetPathEntry], widget: pya.QWidget):
+        if Debugging.DEBUG:
+            debug(f"WidgetPath.for_widget: enter for widget {widget}")
+            
+        def prepend_entries_for_widget(entries: List[WidgetPathEntry], widget: pya.QWidget, visited: Set[int]):
+            if Debugging.DEBUG:
+                debug(f"WidgetPath.for_widget.prepend_entries_for_widget called for {widget} (id {id(widget)})")
+            if id(widget) in visited:
+               if Debugging.DEBUG:
+                  debug(f"WidgetPath.for_widget: endless loop detected due to cyclic parent chain "
+                        f"of widget: {widget}, already visisted: {visited}")
+               return
+            visited.add(id(widget))
+        
             wcls = widget.__class__.__name__
     
             property_filter = {}
@@ -97,13 +111,20 @@ class WidgetPath:
                                 property_filter=property_filter)
             entries.insert(0, e)
             
+            if pw is not None:
+                prepend_entries_for_widget(entries, pw, visited)
+        
         entries = []
-        add_entries_for_widget(entries, widget)
+        visited = set()
+        prepend_entries_for_widget(entries, widget, visited)
         return WidgetPath(entries)
     
     def xpath(self) -> str:
         xps = [e.xpath() for e in self.entries]
-        return '/'.join(xps)
+        if len(xps) == 1:
+            return f"/{xps}"
+        else:
+            return '/'.join(xps)
    
     def __str__(self) -> str:
         return self.xpath()
