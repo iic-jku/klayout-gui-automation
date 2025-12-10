@@ -191,9 +191,6 @@ class EventRecorder(pya.QObject):
             
             match event.type():
                 case pya.QEvent.KeyPress | pya.QEvent.KeyRelease:
-                    if Debugging.DEBUG:
-                        debug(f"EventRecorder.eventFilter: event.type()={event.type()}")
-                    
                     if self.is_modifier_key(event):
                         return False
 

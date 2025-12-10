@@ -107,16 +107,17 @@ class TypeEvent:
 @dataclass
 class Event:
     class Kind(StrEnum):
-        MOUSE_EVENT = 'mouse'
-        KEY_EVENT = 'key'
-        RESIZE_EVENT = 'resize'
-        ACTION_EVENT = 'action'
-        PROBE_EVENT = 'probe'
-        TYPE_EVENT = 'type'
+        MOUSE_EVENT = 'mouse_event'
+        KEY_EVENT = 'key_event'
+        RESIZE_EVENT = 'resize_event'
+        ACTION_EVENT = 'action_event'
+        PROBE_EVENT = 'probe_event'
+        TYPE_EVENT = 'type_event'
 
     kind: Event.Kind
     target: WidgetPath
     event: MouseEvent | KeyEvent | ResizeEvent | ActionEvent | ProbeEvent\
            | TypeEvent
 
-
+    def __str__(self) -> str:
+        return f"{self.kind.value} {self.target.xpath()}: {self.event}"
