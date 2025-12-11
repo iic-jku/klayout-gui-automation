@@ -26,6 +26,9 @@ from klayout_gui_automation.event import Event
 from klayout_gui_automation.event_handler import EventHandler
 
 
+HOT_SPOT_DEBUGGING = False
+
+
 class LowLevelEventCombiner(EventHandler):
     def __init__(self, delegate: EventHandler):
         self.delegate = delegate
@@ -38,24 +41,40 @@ class LowLevelEventCombiner(EventHandler):
         self.previous_event = None
     
     def needs_flush(self, event: Event) -> bool:
+        if self.previous_event is None:
+            return False
+    
         match event.kind:
-            case Event.Kind.ACTION_EVENT | Event.Kind.KEY_EVENT | Event.Kind.PROBE_EVENT:
-                return True
-            
             case Event.Kind.MOUSE_EVENT | Event.Kind.RESIZE_EVENT:
-                if self.previous_event is not None:
-                    if self.previous_event.target != event.target:
-                        return True
-                    elif self.previous_event.kind != event.kind:
-                        return True
-                    elif self.previous_event.event.type != event.event.type\
-                         or self.previous_event.event.button != event.event.button\
-                         or self.previous_event.event.buttons != event.event.buttons\
-                         or self.previous_event.event.modifiers != event.event.modifiers:
-                        return True
-                    return False
+                if self.previous_event.target != event.target:
+                    if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+                        debug(f"LowLevelEventCombiner.needs_flush: yes (different target)!")
+                    return True
+                elif self.previous_event.kind != event.kind:
+                    if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+                        debug(f"LowLevelEventCombiner.needs_flush: yes (different event kind)!")
+                    return True
+        if event.kind == Event.Kind.RESIZE_EVENT:
+            return False
+        elif event.kind == Event.Kind.MOUSE_EVENT\
+            and event.event.type == pya.QEvent.MouseMove:
+            if self.previous_event.event.type != event.event.type\
+                or self.previous_event.event.button != event.event.button\
+                or self.previous_event.event.buttons != event.event.buttons\
+                or self.previous_event.event.modifiers != event.event.modifiers:
+                if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+                    debug(f"LowLevelEventCombiner.needs_flush: yes (different event properties)!")
+                return True
+            return False
+        
+        if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+            debug(f"LowLevelEventCombiner.needs_flush: yes (no matching type combinations)!")
+        return True
     
     def handle_event(self, event: Event):
+        if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+            debug(f"LowLevelEventCombiner.handle_event: enter!")
+            
         if self.needs_flush(event):
             self.flush()
             self.delegate.handle_event(event)
@@ -80,5 +99,8 @@ class LowLevelEventCombiner(EventHandler):
             else: # needs_flush()==False guarantees this is also a mergeable QMouseMoveEvent
                 self.previous_event.event.new_size = event.event.new_size
                 return
+        
+        if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+            debug(f"LowLevelEventCombiner.handle_event: fallback, call delegate!")
         
         self.delegate.handle_event(event)
