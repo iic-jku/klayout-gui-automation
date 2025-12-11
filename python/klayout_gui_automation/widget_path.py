@@ -26,7 +26,7 @@ from klayout_plugin_utils.debugging import debug, Debugging
 from klayout_gui_automation.qwidget_helpers import *
 from klayout_gui_automation.safe_attr_get import safe_attr_get
 
-@dataclass
+@dataclass(frozen=True)
 class WidgetPathEntry:
     widget_name: str
     class_name: str
@@ -44,7 +44,7 @@ class WidgetPathEntry:
             s += f"[{self.child_index}]"
         return s
 
-@dataclass
+@dataclass(frozen=True)
 class WidgetPath:
     entries: List[WidgetPathEntry]
 
@@ -56,8 +56,9 @@ class WidgetPath:
                                        pya.QWidget, pya.QWidget_Native))
         
         widget_id = id(widget)
-        if Debugging.DEBUG:
-            debug(f"WidgetPath.for_widget.prepend_entries_for_widget called for {widget} (id {widget_id})")
+        # NOTE: hot spot, don't log
+        # if Debugging.DEBUG:
+        #    debug(f"WidgetPath.for_widget.prepend_entries_for_widget called for {widget} (id {widget_id})")
         if widget_id in visited:
            if Debugging.DEBUG:
               debug(f"WidgetPath.for_widget: cycle detected for "
@@ -122,8 +123,9 @@ class WidgetPath:
 
     @classmethod
     def for_widget(cls, widget: pya.QWidget) -> WidgetPath:
-        if Debugging.DEBUG:
-            debug(f"WidgetPath.for_widget: enter for widget {widget!r}")
+        # NOTE: hot spot, don't log
+        # if Debugging.DEBUG:
+        #    debug(f"WidgetPath.for_widget: enter for widget {widget!r}")
                         
         entries: List[WidgetPathEntry] = []
         visited: Set[int] = set()
