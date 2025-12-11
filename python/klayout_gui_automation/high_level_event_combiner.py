@@ -30,55 +30,147 @@ class HighLevelEventCombiner(EventHandler):
     def __init__(self, delegate: EventHandler):
         self.delegate = delegate
         
-        self.previous_event: Optional[Event] = None
+        self.previous_events: List[Event] = []
     
     def flush(self):
-        if self.previous_event is not None:
-            self.delegate.handle_event(self.previous_event)
-        self.previous_event = None
+        for e in self.previous_events:
+            self.delegate.handle_event(e)
+        self.previous_events = []
+
+    @property
+    def previous_event(self) -> Optional[Event]:
+        if len(self.previous_events) == 0:
+            return None
+        return self.previous_events[-1]
     
     def needs_flush(self, event: Event) -> bool:
-        match event.kind:
-            case Event.Kind.ACTION_EVENT | Event.Kind.KEY_EVENT | Event.Kind.PROBE_EVENT:
-                return True
+        p = self.previous_event
+        if p is None:
+            return False
             
-            case Event.Kind.MOUSE_EVENT | Event.Kind.RESIZE_EVENT:
-                if self.previous_event is not None:
-                    if self.previous_event.target != event.target:
-                        return True
-                    elif self.previous_event.kind != event.kind:
-                        return True
-                    elif self.previous_event.event.type != event.event.type\
-                         or self.previous_event.event.button != event.event.button\
-                         or self.previous_event.event.buttons != event.event.buttons\
-                         or self.previous_event.event.modifiers != event.event.modifiers:
-                        return True
-                    return False
+        if p.target != event.target:
+            return True
+            
+        p_kind = p.kind if p else None
+        p_event_type = p.event.type if p else pya.QEvent.None_
+        match (p_kind, event.kind):
+            case (Event.Kind.KEY_EVENT, Event.Kind.KEY_EVENT):  # we can merge keyDown/keyUp into TypeEvents
+                match (p_event_type, event.event.type):
+                    case (pya.QEvent.None_, pya.QEvent.KeyPress):
+                        return False
+                    
+                    case (pya.QEvent.KeyPress, pya.QEvent.KeyRelease):
+                        return False
+                
+                return True
+                        
+            case (Event.Kind.TYPE_EVENT, Event.Kind.KEY_EVENT):
+                return False
+        
+            case (Event.Kind.MOUSE_EVENT, Event.Kind.MOUSE_EVENT):  # TODO
+                match (p_event_type, event.event.type):
+                    case (pya.QEvent.None_, pya.QEvent.MouseButtonPress):
+                        return False
+                
+                    case (pya.QEvent.MouseButtonPress, pya.QEvent.MouseButtonRelease):
+                        return False
+                
+                # return False if mergeable
+                return True
+
+        return True
     
+    def _try_combine_key_event(self, event: Event) -> bool:
+        # see if we can combine
+        if event.kind != Event.Kind.KEY_EVENT:
+            return False
+        
+        p = self.previous_event
+        p_kind = p.kind if p else None
+        p_event_type = p.event.type if p else pya.QEvent.None_
+        
+        match (p_kind, event.kind):
+            case (Event.Kind.KEY_EVENT, Event.Kind.KEY_EVENT):  # we can merge keyDown/keyUp into TypeEvents
+                match (p_event_type, event.event.type):
+                    case (pya.QEvent.None_, pya.QEvent.KeyPress):
+                        # delay emitting this event, as we can combine
+                        self.previous_events.append(event)
+                        return True
+                        
+                    case (pya.QEvent.KeyPress, pya.QEvent.KeyRelease):
+                        self.previous_events.pop()
+                        p = self.previous_event
+                        if p is None:
+                            te = Event(kind=Event.Kind.TYPE_EVENT,
+                                       target=event.target,
+                                       event=TypeEvent(text=event.event.text))
+                            self.previous_events.append(te)
+                        elif p.kind == Event.Kind.TYPE_Event:
+                            p.text += event.event.text
+                        # delay emitting this event, as we can combine
+                        return True
+                
+            case (Event.Kind.TYPE_EVENT, Event.Kind.KEY_EVENT):
+                # delay emitting this event, as we can combine
+                self.previous_events.append(event)
+                return True
+        
+        return False
+    
+    def _try_combine_mouse_event(self, event: Event) -> bool:
+        # see if we can combine
+        if event.kind != Event.Kind.MOUSE_EVENT:
+            return False
+        
+        p = self.previous_event
+        p_kind = p.kind if p else None
+        p_event_type = p.event.type if p else pya.QEvent.None_
+        
+        match (p_kind, event.kind):
+            case (Event.Kind.MOUSE_EVENT, Event.Kind.MOUSE_EVENT):  # we can merge keyDown/keyUp into TypeEvents
+                match (p_event_type, event.event.type):
+                    case (pya.QEvent.None_, pya.QEvent.MouseButtonPress):
+                        # delay emitting this event, as we can combine
+                        self.previous_events.append(event)
+                        return True
+                        
+                    case (pya.QEvent.MouseButtonPress, pya.QEvent.MouseButtonRelease):
+                        self.previous_events.pop()
+                        p = self.previous_event
+                        if p is None:
+                            te = Event(kind=Event.Kind.CLICK_EVENT,
+                                       target=event.target,
+                                       event=TypeEvent(text=event.event.text))
+                            self.previous_events.append(te)
+                        elif p.kind == Event.Kind.TYPE_Event:
+                            p.text += event.event.text
+                        # delay emitting this event, as we can combine
+                        return True
+                
+        return False
+
     def handle_event(self, event: Event):
+        if Debugging.DEBUG:
+            debug(f"HighLevelEventCombiner.handle_event: enter!")
+
         if self.needs_flush(event):
+            if Debugging.DEBUG:
+                debug(f"HighLevelEventCombiner.handle_event: need flush!")
+            
             self.flush()
             self.delegate.handle_event(event)
             return
         
-        # see if we can combine
-        if event.kind == Event.Kind.MOUSE_EVENT and event.event.type == pya.QEvent.MouseMove:
-            if self.previous_event is None:
-                # delay emitting this event, as we can combine moves
-                self.previous_event = event
-                return
-            else: # needs_flush()==False guarantees this is also a mergeable QMouseMoveEvent
-                delta = event.event.global_pos - self.previous_event.event.global_pos
-                self.previous_event.event.pos += delta
-                self.previous_event.event.global_pos += delta
-                return
-        elif event.kind == Event.Kind.RESIZE_EVENT:
-            if self.previous_event is None:
-                # delay emitting this event, as we can combine moves
-                self.previous_event = event
-                return
-            else: # needs_flush()==False guarantees this is also a mergeable QMouseMoveEvent
-                self.previous_event.event.new_size = event.event.new_size
-                return
-        
-        self.delegate.handle_event(event)
+        if self._try_combine_key_event(event):
+            if Debugging.DEBUG:
+                debug(f"HighLevelEventCombiner.handle_event: merging key event worked!")
+            return
+        elif self._try_combine_mouse_event(event):
+            if Debugging.DEBUG:
+                debug(f"HighLevelEventCombiner.handle_event: merging key event worked!")
+            return
+        else:           
+            if Debugging.DEBUG:
+                debug(f"HighLevelEventCombiner.handle_event: fallback, call delegate!")
+            self.delegate.handle_event(event)
+    
