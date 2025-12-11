@@ -97,6 +97,10 @@ class ProbeEvent:
 #---------------------------------------------------------------------------------
 
 @dataclass
+class ClickEvent:
+    pass
+
+@dataclass
 class TypeEvent:
     text: str
 
@@ -112,12 +116,13 @@ class Event:
         RESIZE_EVENT = 'resize_event'
         ACTION_EVENT = 'action_event'
         PROBE_EVENT = 'probe_event'
+        CLICK_EVENT = 'click_event'
         TYPE_EVENT = 'type_event'
 
     kind: Event.Kind
     target: WidgetPath
     event: MouseEvent | KeyEvent | ResizeEvent | ActionEvent | ProbeEvent\
-           | TypeEvent
+           | ClickEvent | TypeEvent
 
     def __str__(self) -> str:
         return f"{self.kind.value} {self.target.xpath()}: {self.event}"
