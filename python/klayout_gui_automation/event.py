@@ -99,6 +99,7 @@ class ProbeEvent:
 @dataclass
 class ClickEvent:
     pass
+    
 
 @dataclass
 class TypeEvent:

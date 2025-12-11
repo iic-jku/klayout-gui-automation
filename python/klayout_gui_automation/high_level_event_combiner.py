@@ -22,8 +22,11 @@ import pya
 
 from klayout_plugin_utils.debugging import debug, Debugging
 
-from klayout_gui_automation.event import Event
+from klayout_gui_automation.event import Event, TypeEvent, ClickEvent
 from klayout_gui_automation.event_handler import EventHandler
+
+
+HOT_SPOT_DEBUGGING = True
 
 
 class HighLevelEventCombiner(EventHandler):
@@ -49,10 +52,12 @@ class HighLevelEventCombiner(EventHandler):
             return False
             
         if p.target != event.target:
+            if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+                debug(f"HighLevelEventCombiner.needs_flush: yes (different target)!")
             return True
             
         p_kind = p.kind if p else None
-        p_event_type = p.event.type if p else pya.QEvent.None_
+        p_event_type = p.event.type if p and hasattr(p.event, 'type') else pya.QEvent.None_
         match (p_kind, event.kind):
             case (Event.Kind.KEY_EVENT, Event.Kind.KEY_EVENT):  # we can merge keyDown/keyUp into TypeEvents
                 match (p_event_type, event.event.type):
@@ -62,6 +67,8 @@ class HighLevelEventCombiner(EventHandler):
                     case (pya.QEvent.KeyPress, pya.QEvent.KeyRelease):
                         return False
                 
+                if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+                    debug(f"HighLevelEventCombiner.needs_flush: no matching combination KEY_EVENT/KEY_EVENT!")
                 return True
                         
             case (Event.Kind.TYPE_EVENT, Event.Kind.KEY_EVENT):
@@ -75,21 +82,31 @@ class HighLevelEventCombiner(EventHandler):
                     case (pya.QEvent.MouseButtonPress, pya.QEvent.MouseButtonRelease):
                         return False
                 
-                # return False if mergeable
+                if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+                    debug(f"HighLevelEventCombiner.needs_flush: no matching combination NOUSE_EVENT/NOUSE_EVENT!")
                 return True
 
+        if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+            debug(f"HighLevelEventCombiner.needs_flush: fallback")
         return True
     
     def _try_combine_key_event(self, event: Event) -> bool:
         # see if we can combine
         if event.kind != Event.Kind.KEY_EVENT:
+            if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+                debug(f"HighLevelEventCombiner._try_combine_key_event: no previous event")
             return False
         
         p = self.previous_event
         p_kind = p.kind if p else None
-        p_event_type = p.event.type if p else pya.QEvent.None_
+        p_event_type = p.event.type if p and hasattr(p.event, 'type') else pya.QEvent.None_
         
         match (p_kind, event.kind):
+            case (None, Event.Kind.KEY_EVENT):
+                if event.event.type == pya.QEvent.KeyPress:
+                    # delay emitting this event, as we can combine
+                    self.previous_events.append(event)
+                    return True
             case (Event.Kind.KEY_EVENT, Event.Kind.KEY_EVENT):  # we can merge keyDown/keyUp into TypeEvents
                 match (p_event_type, event.event.type):
                     case (pya.QEvent.None_, pya.QEvent.KeyPress):
@@ -105,15 +122,24 @@ class HighLevelEventCombiner(EventHandler):
                                        target=event.target,
                                        event=TypeEvent(text=event.event.text))
                             self.previous_events.append(te)
-                        elif p.kind == Event.Kind.TYPE_Event:
+                        elif p.kind == Event.Kind.TYPE_EVENT:
                             p.text += event.event.text
                         # delay emitting this event, as we can combine
                         return True
+                    
+                    case (_, _):
+                        if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+                            debug(f"HighLevelEventCombiner._try_combine_key_event: different key events {p_event_type} vs {event.event.type}")
+                    
                 
             case (Event.Kind.TYPE_EVENT, Event.Kind.KEY_EVENT):
                 # delay emitting this event, as we can combine
                 self.previous_events.append(event)
                 return True
+
+            case (_, _):
+                if Debugging.DEBUG and HOT_SPOT_DEBUGGING:
+                    debug(f"HighLevelEventCombiner._try_combine_key_event: different events {p_kind} vs {event.kind}")
         
         return False
     
